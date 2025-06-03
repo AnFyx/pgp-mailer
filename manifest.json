@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Inline PGP - Instant Keys",
+  "version": "1.1",
+  "description": "Inject Encrypt/Sign buttons into Gmail and prompt for keys each time",
+  "permissions": ["scripting", "activeTab"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["openpgp.min.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icon.png"
+  }
+}
