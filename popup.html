@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PGP Key Manager</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 10px;
+      width: 300px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+    }
+    input[type="email"] {
+      width: 100%;
+      margin-top: 5px;
+    }
+    button {
+      margin-top: 10px;
+      width: 100%;
+    }
+    .key-section {
+      margin-top: 20px;
+    }
+    .key-item {
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .label {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+  </style>
+  <script src="openpgp.min.js"></script>
+  <script type="module" src="popup.js"></script>
+</head>
+<body>
+  <h2>PGP Key Manager</h2>
+
+  <textarea id="keyInput" placeholder="Paste PGP key here..."></textarea>
+  <input type="email" id="emailInput" placeholder="Email (for public keys only)" style="display: none;" />
+  <button id="importKey">Import Key</button>
+
+  <div class="key-section">
+    <h3>Stored Keys</h3>
+    <div class="label">Private Key:</div>
+    <div id="privateKeyStatus" class="key-item">Loading...</div>
+
+    <div class="label">Public Keys:</div>
+    <div id="publicKeyList" class="key-item">Loading...</div>
+  </div>
+</body>
+</html>
