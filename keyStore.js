@@ -30,20 +30,8 @@ export async function getPublicKey(email) {
   return sendKeyStoreAction("getPublicKey", { email });
 }
 
-export async function deleteKey(keyType, id) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      { type: "KEY_STORE_ACTION", action: "deleteKey", keyType, id },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn("Message failed:", chrome.runtime.lastError);
-          return reject(chrome.runtime.lastError);
-        }
-        if (response?.error) return reject(new Error(response.error));
-        resolve(response);
-      }
-    );
-  });
+export async function deleteKey(keyType, email) {
+  return sendKeyStoreAction("deleteKey", { keyType, id: email });
 }
 
 export async function listKeys() {

@@ -1,8 +1,15 @@
 async function getPrivateKeyFromStoreOrPrompt() {
-  const stored = await chrome.runtime.sendMessage({
-    type: "KEY_STORE_ACTION",
-    action: "listKeys"
-  });
+  let stored;
+  try {
+    stored = await chrome.runtime.sendMessage({
+      type: "KEY_STORE_ACTION",
+      action: "listKeys"
+    });
+  } catch (e) {
+    console.error("Extension context lost or invalid:", e);
+    alert("The extension context was lost. Try reloading the Gmail tab.");
+    return null;
+  }
 
   const privKeys = stored?.privateKeys || {};
 
@@ -19,26 +26,26 @@ async function getPrivateKeyFromStoreOrPrompt() {
   const input = prompt("Paste your PRIVATE key:");
   if (!input) return null;
 
-  const email = prompt("Enter your email to associate with this private key:");
-  if (!email) return null;
-
   const shouldStore = confirm("Do you want to store this private key for future use?");
   if (shouldStore) {
+    const email = prompt("Enter your email to associate with this private key:");
+    if (!email) return null;
+    
     await chrome.runtime.sendMessage({
       type: "KEY_STORE_ACTION",
       action: "savePrivateKey",
       email,
       armoredKey: input
     });
-  }
 
-  const shouldBeActive = confirm("Set this private key as your active key?");
-  if (shouldBeActive) {
-    await chrome.runtime.sendMessage({
-      type: "KEY_STORE_ACTION",
-      action: "setActivePrivateKey",
-      email
-    });
+    const shouldBeActive = confirm("Set this private key as your active key?");
+    if (shouldBeActive) {
+      await chrome.runtime.sendMessage({
+        type: "KEY_STORE_ACTION",
+        action: "setActivePrivateKey",
+        email
+      });
+    }
   }
 
   return input;
@@ -57,13 +64,18 @@ async function getRecipientEmailFromDOM() {
 }
 
 async function getPublicKeyFromStoreOrPrompt(email) {
-  const key = await chrome.runtime.sendMessage({
-    type: "KEY_STORE_ACTION",
-    action: "getPublicKey",
-    email
-  });
+  let key;
+  try {
+    key = await chrome.runtime.sendMessage({
+      type: "KEY_STORE_ACTION",
+      action: "getPublicKey",
+      email
+    });
+  } catch (err) {
+    console.error("Failed to get public key from background:", err);
+  }
 
-  if (key) return key.armoredKey;
+  if (key && key.armoredKey) return key.armoredKey;
 
   const input = prompt(`Paste PUBLIC key for ${email}:`);
   if (!input) return null;

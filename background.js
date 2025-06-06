@@ -113,5 +113,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ error: err.message || String(err) });
     });
 
-  return true; // Keep async response channel open
+  return true;
 });
