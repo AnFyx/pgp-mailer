@@ -31,24 +31,31 @@
       font-weight: bold;
       margin-bottom: 4px;
     }
+    select {
+      width: 100%;
+      margin-top: 5px;
+    }
   </style>
   <script src="openpgp.min.js"></script>
   <script type="module" src="popup.js"></script>
 </head>
 <body>
-  <h2>PGP Key Manager</h2>
+  <h2>PGP Mailer</h2>
 
   <textarea id="keyInput" placeholder="Paste PGP key here..."></textarea>
-  <input type="email" id="emailInput" placeholder="Email (for public keys only)" style="display: none;" />
+  <input type="email" id="emailInput" placeholder="Paste Email here..." />
   <button id="importKey">Import Key</button>
 
   <div class="key-section">
     <h3>Stored Keys</h3>
-    <div class="label">Private Key:</div>
-    <div id="privateKeyStatus" class="key-item">Loading...</div>
+    <div class="label">Active Private Key:</div>
+    <select id="privateKeySelector" class="key-item"></select>
+
+    <div class="label">Private Keys:</div>
+    <div id="privateKeyList" class="key-item"></div>
 
     <div class="label">Public Keys:</div>
-    <div id="publicKeyList" class="key-item">Loading...</div>
+    <div id="publicKeyList" class="key-item"></div>
   </div>
 </body>
 </html>

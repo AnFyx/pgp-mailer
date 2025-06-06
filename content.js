@@ -1,70 +1,3 @@
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
-    try {
-      if (message.type !== "KEY_STORE_ACTION") return;
-
-      const { action, fingerprint, email, armoredKey, type, id } = message;
-
-      const get = async (key) => (await chrome.storage.local.get(key))[key] || {};
-      const set = async (key, value) => chrome.storage.local.set({ [key]: value });
-
-      switch (action) {
-        case "savePrivateKey": {
-          const keys = await get("privateKeys");
-          keys[fingerprint] = armoredKey;
-          await set("privateKeys", keys);
-          sendResponse({ success: true });
-          break;
-        }
-
-        case "getPrivateKey": {
-          const keys = await get("privateKeys");
-          sendResponse(keys[fingerprint] || null);
-          break;
-        }
-
-        case "savePublicKey": {
-          const keys = await get("publicKeys");
-          keys[email] = armoredKey;
-          await set("publicKeys", keys);
-          sendResponse({ success: true });
-          break;
-        }
-
-        case "getPublicKey": {
-          const keys = await get("publicKeys");
-          sendResponse(keys[email] || null);
-          break;
-        }
-
-        case "deleteKey": {
-          const keyGroup = type === "private" ? "privateKeys" : "publicKeys";
-          const keys = await get(keyGroup);
-          delete keys[id];
-          await set(keyGroup, keys);
-          sendResponse({ success: true });
-          break;
-        }
-
-        case "listKeys": {
-          const privateKeys = await get("privateKeys");
-          const publicKeys = await get("publicKeys");
-          sendResponse({ privateKeys, publicKeys });
-          break;
-        }
-
-        default:
-          sendResponse({ error: "Unknown action" });
-      }
-    } catch (err) {
-      console.error("Error handling message:", err);
-      sendResponse({ error: "Internal error", details: err.message });
-    }
-  })();
-
-  return true;
-});
-
 async function getPrivateKeyFromStoreOrPrompt() {
   const stored = await chrome.runtime.sendMessage({
     type: "KEY_STORE_ACTION",
@@ -72,23 +5,41 @@ async function getPrivateKeyFromStoreOrPrompt() {
   });
 
   const privKeys = stored?.privateKeys || {};
-  const fingerprints = Object.keys(privKeys);
-  if (fingerprints.length > 0) {
-    return privKeys[fingerprints[0]];
+
+  const activeKeyData = await chrome.runtime.sendMessage({
+    type: "KEY_STORE_ACTION",
+    action: "getActivePrivateKey"
+  });
+  const activeEmail = activeKeyData?.email || null;
+
+  if (activeEmail && privKeys[activeEmail]) {
+    return privKeys[activeEmail];
   }
 
   const input = prompt("Paste your PRIVATE key:");
   if (!input) return null;
 
-  const privKey = await openpgp.readPrivateKey({ armoredKey: input });
-  const fp = privKey.getFingerprint();
+  const email = prompt("Enter your email to associate with this private key:");
+  if (!email) return null;
 
-  await chrome.runtime.sendMessage({
-    type: "KEY_STORE_ACTION",
-    action: "savePrivateKey",
-    fingerprint: fp,
-    armoredKey: input
-  });
+  const shouldStore = confirm("Do you want to store this private key for future use?");
+  if (shouldStore) {
+    await chrome.runtime.sendMessage({
+      type: "KEY_STORE_ACTION",
+      action: "savePrivateKey",
+      email,
+      armoredKey: input
+    });
+  }
+
+  const shouldBeActive = confirm("Set this private key as your active key?");
+  if (shouldBeActive) {
+    await chrome.runtime.sendMessage({
+      type: "KEY_STORE_ACTION",
+      action: "setActivePrivateKey",
+      email
+    });
+  }
 
   return input;
 }
@@ -112,7 +63,7 @@ async function getPublicKeyFromStoreOrPrompt(email) {
     email
   });
 
-  if (key) return key;
+  if (key) return key.armoredKey;
 
   const input = prompt(`Paste PUBLIC key for ${email}:`);
   if (!input) return null;
@@ -130,7 +81,6 @@ async function getPublicKeyFromStoreOrPrompt(email) {
   return input;
 }
 
-// MutationObserver to inject PGP buttons in compose window
 function insertButtons() {
   const existing = document.getElementById("pgp-btn-container");
   if (existing) return;
@@ -183,7 +133,6 @@ function insertButtons() {
   actionRow.insertBefore(td, discardCell);
 }
 
-// Function to encrypt or sign messages
 async function handlePGPAction(action) {
   const bodyElem = document.querySelector('[class="Am aiL Al editable LW-avf tS-tW"][contenteditable="true"]');
   if (!bodyElem) return;
@@ -205,7 +154,7 @@ async function handlePGPAction(action) {
     publicKey = await openpgp.readKey({ armoredKey: pubKeyArmored });
   }
 
-  const privateKey = await openpgp.readPrivateKey({ armoredKey: privKeyArmored });
+  const privateKey = await openpgp.readPrivateKey({ armoredKey: String(privKeyArmored) });
   const decryptedKey = passphrase
     ? await openpgp.decryptKey({ privateKey, passphrase })
     : privateKey;
@@ -235,7 +184,6 @@ async function handlePGPAction(action) {
   editable.dispatchEvent(new InputEvent("input", { bubbles: true }));
 }
 
-// NEW: Detect and decrypt PGP messages in opened emails
 async function tryAutoDecryptPGPMessages() {
   const pgpBlocks = document.querySelectorAll(".a3s pre:not([data-decrypted])");
   for (const block of pgpBlocks) {
@@ -275,7 +223,6 @@ async function tryAutoDecryptPGPMessages() {
   }
 }
 
-// Start observing DOM
 const observer = new MutationObserver(() => {
   insertButtons();
   tryAutoDecryptPGPMessages();

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gmail Inline PGP - Instant Keys",
-  "version": "1.1",
-  "description": "Inject Encrypt/Sign buttons into Gmail and manage PGP keys.",
+  "name": "PGP Mailer",
+  "version": "1.0",
+  "description": "Easily sign and encrypt Gmail messages with inline PGP support.",
   "permissions": [
     "scripting",
     "activeTab",
@@ -14,7 +14,10 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icon.png"
+      "16": "icons/icon.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
   },
   "content_scripts": [
@@ -28,12 +31,9 @@
     "service_worker": "background.js"
   },
   "icons": {
-    "16": "icon.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["openpgp.min.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+    "16": "icons/icon.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }
