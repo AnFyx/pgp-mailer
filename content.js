@@ -177,6 +177,7 @@ async function handlePGPAction(action) {
   if (action === "Encrypt") {
     output = await openpgp.encrypt({ message, encryptionKeys: publicKey });
   } else if (action === "Sign") {
+    const message = await openpgp.createCleartextMessage({ text: originalText });
     output = await openpgp.sign({ message, signingKeys: decryptedKey, format: "armored" });
   } else if (action === "Sign & Encrypt") {
     output = await openpgp.encrypt({ message, encryptionKeys: publicKey, signingKeys: decryptedKey });
@@ -230,6 +231,52 @@ async function tryAutoDecryptPGPMessages() {
         block.parentElement.appendChild(decryptedDiv);
       } catch (err) {
         console.error("PGP decryption failed:", err);
+      }
+    } else if (content.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
+      const senderElement = document.querySelector('[class="go"]');
+      if (!senderElement) continue;
+
+      const senderText = senderElement.textContent.trim();
+      const senderEmail = senderText.match(/<([^>]+)>/)?.[1] || 
+                         senderText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/i)?.[0] || 
+                         senderText;
+
+      const pubKeyArmored = await getPublicKeyFromStoreOrPrompt(senderEmail);
+      if (!pubKeyArmored) continue;
+
+      try {
+        const publicKey = await openpgp.readKey({ armoredKey: pubKeyArmored });
+        const cleartextMessage = await openpgp.readCleartextMessage({ cleartextMessage: content });
+        const verificationResult = await openpgp.verify({
+          message: cleartextMessage,
+          verificationKeys: publicKey
+        });
+
+        const { verified, keyID } = verificationResult.signatures[0];
+        await verified; // throws if signature is invalid
+
+        const verifiedDiv = document.createElement("div");
+        verifiedDiv.style.border = "1px solid #bbdefb";
+        verifiedDiv.style.background = "#e3f2fd";
+        verifiedDiv.style.padding = "10px";
+        verifiedDiv.style.marginTop = "10px";
+        verifiedDiv.style.whiteSpace = "pre-wrap";
+        verifiedDiv.innerHTML = `<strong>PGP Signature Verified</strong><br>From: ${senderEmail}<br>Key ID: ${keyID.toHex()}<br><br><strong>Message:</strong><br>${cleartextMessage.getText()}`;
+
+        block.dataset.decrypted = "true";
+        block.textContent = "PGP signed message detected. Verified version below ↓";
+        block.parentElement.appendChild(verifiedDiv);
+      } catch (err) {
+        console.error("PGP signature verification failed:", err);
+        const errorDiv = document.createElement("div");
+        errorDiv.style.border = "1px solid #ffcdd2";
+        errorDiv.style.background = "#ffebee";
+        errorDiv.style.padding = "10px";
+        errorDiv.style.marginTop = "10px";
+        errorDiv.style.whiteSpace = "pre-wrap";
+        errorDiv.innerHTML = `<strong>PGP Signature Verification Failed</strong><br>Error: ${err.message}`;
+
+        block.parentElement.appendChild(errorDiv);
       }
     }
   }
