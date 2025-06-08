@@ -202,6 +202,7 @@ async function tryAutoDecryptPGPMessages() {
   for (const block of pgpBlocks) {
     const content = block.textContent;
     if (content.includes("-----BEGIN PGP MESSAGE-----")) {
+      if (block.dataset.decrypted === "true") continue;
       block.dataset.decrypted = "true";
       let privKeyArmored = await getPrivateKeyFromStoreOrPrompt();
       if (!privKeyArmored) {
@@ -215,31 +216,92 @@ async function tryAutoDecryptPGPMessages() {
         const privateKey = await openpgp.readPrivateKey({ armoredKey: privKeyArmored });
         const decryptedKey = passphrase ? await openpgp.decryptKey({ privateKey, passphrase }) : privateKey;
         const message = await openpgp.readMessage({ armoredMessage: content });
-        const { data: decrypted } = await openpgp.decrypt({ message, decryptionKeys: decryptedKey });
 
-        block.dataset.decrypted = "true";
-        block.textContent = "Encrypted PGP message detected. Decrypted version below ↓";
+        let verificationKeys = [];
+        let senderEmail;
+        try {
+          const senderElement = document.querySelector('[class="go"]');
+          const senderText = senderElement?.textContent.trim() || "";
+          senderEmail = senderText.match(/<([^>]+)>/)?.[1] ||
+                        senderText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)?.[0];
+        
+          if (senderEmail) {
+            const senderPubKey = await getPublicKeyFromStoreOrPrompt(senderEmail);
+            if (senderPubKey) {
+              const publicKey = await openpgp.readKey({ armoredKey: senderPubKey });
+              verificationKeys = [publicKey];
+            }
+          }
+        } catch (e) {
+          console.warn("Could not load verification key:", e);
+        }
+
+        const { data: decrypted, signatures } = await openpgp.decrypt({
+          message,
+          decryptionKeys: decryptedKey,
+          verificationKeys
+        });
+
+        let verifiedInfo = "", verificationResult = false;
+        if (signatures?.length > 0) {
+          try {
+            verificationResult = await signatures[0].verified;
+            verifiedInfo = verificationResult
+              ? `<strong>PGP Signature Verified</strong><br>From: ${senderEmail}<br>Key ID: ${signatures[0].keyID.toHex()}<br><br>`
+              : `<strong>PGP Signature Verification Failed</strong><br><br>`;
+          } catch (err) {
+            verifiedInfo = `<strong>PGP Signature Verification Failed:</strong><br>From: ${senderEmail}<br><strong>Error:</strong> ${err.message}<br><br>`;
+          }
+        };
+
+        block.textContent = signatures?.length
+          ? "Signed & Encrypted PGP message detected. Decrypted + signature verification below ↓"
+          : "Encrypted PGP message detected. Decrypted version below ↓";
 
         const decryptedDiv = document.createElement("div");
-        decryptedDiv.style.border = "1px solid #c8e6c9";
-        decryptedDiv.style.background = "#f1f8e9";
+        if (signatures?.length > 0) {
+          decryptedDiv.style.border = (verificationResult) ? "1px solid #c8e6c9" : "1px solid #ffcc80";
+          decryptedDiv.style.background = (verificationResult) ? "#f1f8e9" : "#fff3e0";
+        } else {
+          decryptedDiv.style.border = "1px solid #c8e6c9";
+          decryptedDiv.style.background = "#f1f8e9";
+        }
         decryptedDiv.style.padding = "10px";
         decryptedDiv.style.marginTop = "10px";
         decryptedDiv.style.whiteSpace = "pre-wrap";
-        decryptedDiv.innerHTML = "<strong>Decrypted Message:</strong><br>" + decrypted;
+        if (signatures?.length > 0) {
+          decryptedDiv.innerHTML = `${verifiedInfo}<strong>Decrypted Message:</strong><br>${decrypted}`;
+        } else {
+          decryptedDiv.innerHTML = `<strong>Decrypted Message:</strong><br>${decrypted}`;
+        }
 
         block.parentElement.appendChild(decryptedDiv);
       } catch (err) {
-        console.error("PGP decryption failed:", err);
+        block.textContent = "Encrypted PGP message detected. Decryption failed. See details below ↓";
+
+        const failedDiv = document.createElement("div");
+        failedDiv.style.border = "1px solid #ffcdd2";
+        failedDiv.style.background = "#ffebee";
+        failedDiv.style.padding = "10px";
+        failedDiv.style.marginTop = "10px";
+        failedDiv.style.whiteSpace = "pre-wrap";
+        failedDiv.innerHTML = `<strong>PGP Decryption Failed</strong><br><strong>Error:</strong> ${err.message}<br><br><strong>Original Message:</strong><br>${content}`;
+
+        block.parentElement.appendChild(failedDiv);
+
+        continue;
       }
     } else if (content.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
+      if (block.dataset.verified === "true") continue;
+      block.dataset.verified = "true";
+
       const senderElement = document.querySelector('[class="go"]');
       if (!senderElement) continue;
 
       const senderText = senderElement.textContent.trim();
       const senderEmail = senderText.match(/<([^>]+)>/)?.[1] || 
-                         senderText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/i)?.[0] || 
-                         senderText;
+                          senderText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/i)?.[0] || 
+                          senderText;
 
       const pubKeyArmored = await getPublicKeyFromStoreOrPrompt(senderEmail);
       if (!pubKeyArmored) continue;
@@ -253,30 +315,31 @@ async function tryAutoDecryptPGPMessages() {
         });
 
         const { verified, keyID } = verificationResult.signatures[0];
-        await verified; // throws if signature is invalid
+        await verified;
 
         const verifiedDiv = document.createElement("div");
-        verifiedDiv.style.border = "1px solid #bbdefb";
-        verifiedDiv.style.background = "#e3f2fd";
+        verifiedDiv.style.border = "1px solid #c8e6c9";
+        verifiedDiv.style.background = "#f1f8e9";
         verifiedDiv.style.padding = "10px";
         verifiedDiv.style.marginTop = "10px";
         verifiedDiv.style.whiteSpace = "pre-wrap";
         verifiedDiv.innerHTML = `<strong>PGP Signature Verified</strong><br>From: ${senderEmail}<br>Key ID: ${keyID.toHex()}<br><br><strong>Message:</strong><br>${cleartextMessage.getText()}`;
 
-        block.dataset.decrypted = "true";
         block.textContent = "PGP signed message detected. Verified version below ↓";
         block.parentElement.appendChild(verifiedDiv);
       } catch (err) {
-        console.error("PGP signature verification failed:", err);
-        const errorDiv = document.createElement("div");
-        errorDiv.style.border = "1px solid #ffcdd2";
-        errorDiv.style.background = "#ffebee";
-        errorDiv.style.padding = "10px";
-        errorDiv.style.marginTop = "10px";
-        errorDiv.style.whiteSpace = "pre-wrap";
-        errorDiv.innerHTML = `<strong>PGP Signature Verification Failed</strong><br>Error: ${err.message}`;
+        const cleartextMessage = await openpgp.readCleartextMessage({ cleartextMessage: content });
 
-        block.parentElement.appendChild(errorDiv);
+        const failedDiv = document.createElement("div");
+        failedDiv.style.border = "1px solid #ffcdd2";
+        failedDiv.style.background = "#ffebee";
+        failedDiv.style.padding = "10px";
+        failedDiv.style.marginTop = "10px";
+        failedDiv.style.whiteSpace = "pre-wrap";
+        failedDiv.innerHTML = `<strong>PGP Signature Verification Failed</strong><br>From: ${senderEmail}<br><strong>Error:</strong> ${err.message}<br><br><strong>Original Message:</strong><br>${cleartextMessage.getText()}`;
+
+        block.textContent = "PGP signed message detected. Verification failed. See details below ↓";
+        block.parentElement.appendChild(failedDiv);
       }
     }
   }
