@@ -1,3 +1,52 @@
+// --- Rendu sûr des panneaux de résultat ------------------------------------
+// Le contenu déchiffré, le texte signé, l'adresse de l'expéditeur et les
+// messages d'erreur viennent de l'extérieur : ils ne sont JAMAIS interprétés
+// comme du HTML. Tout passe par textContent / createElement.
+
+const PANEL_KIND_STYLES = {
+  ok: { border: "1px solid #c8e6c9", background: "#f1f8e9" },
+  warn: { border: "1px solid #ffcc80", background: "#fff3e0" },
+  error: { border: "1px solid #ffcdd2", background: "#ffebee" },
+};
+
+function createPanel(kind) {
+  const panel = document.createElement("div");
+  const style = PANEL_KIND_STYLES[kind] || PANEL_KIND_STYLES.ok;
+  panel.style.border = style.border;
+  panel.style.background = style.background;
+  panel.style.padding = "10px";
+  panel.style.marginTop = "10px";
+  panel.style.whiteSpace = "pre-wrap";
+  return panel;
+}
+
+function appendHeading(panel, text) {
+  const heading = document.createElement("strong");
+  heading.textContent = text;
+  panel.appendChild(heading);
+  panel.appendChild(document.createElement("br"));
+}
+
+function appendField(panel, label, value) {
+  const name = document.createElement("strong");
+  name.textContent = label + " ";
+  panel.appendChild(name);
+  panel.appendChild(document.createTextNode(String(value ?? "")));
+  panel.appendChild(document.createElement("br"));
+}
+
+function appendBody(panel, label, text) {
+  panel.appendChild(document.createElement("br"));
+  const name = document.createElement("strong");
+  name.textContent = label;
+  panel.appendChild(name);
+  panel.appendChild(document.createElement("br"));
+  const body = document.createElement("div");
+  body.style.whiteSpace = "pre-wrap";
+  body.textContent = String(text ?? "");
+  panel.appendChild(body);
+}
+
 async function getPrivateKeyFromStoreOrPrompt() {
   let stored;
   try {
@@ -242,50 +291,41 @@ async function tryAutoDecryptPGPMessages() {
           verificationKeys
         });
 
-        let verifiedInfo = "", verificationResult = false;
-        if (signatures?.length > 0) {
+        const signed = signatures?.length > 0;
+        let verificationResult = false;
+        let verificationError = null;
+        if (signed) {
           try {
             verificationResult = await signatures[0].verified;
-            verifiedInfo = verificationResult
-              ? `<strong>PGP Signature Verified</strong><br>From: ${senderEmail}<br>Key ID: ${signatures[0].keyID.toHex()}<br><br>`
-              : `<strong>PGP Signature Verification Failed</strong><br><br>`;
           } catch (err) {
-            verifiedInfo = `<strong>PGP Signature Verification Failed:</strong><br>From: ${senderEmail}<br><strong>Error:</strong> ${err.message}<br><br>`;
+            verificationError = err.message;
           }
-        };
+        }
 
-        block.textContent = signatures?.length
+        block.textContent = signed
           ? "Signed & Encrypted PGP message detected. Decrypted + signature verification below ↓"
           : "Encrypted PGP message detected. Decrypted version below ↓";
 
-        const decryptedDiv = document.createElement("div");
-        if (signatures?.length > 0) {
-          decryptedDiv.style.border = (verificationResult) ? "1px solid #c8e6c9" : "1px solid #ffcc80";
-          decryptedDiv.style.background = (verificationResult) ? "#f1f8e9" : "#fff3e0";
-        } else {
-          decryptedDiv.style.border = "1px solid #c8e6c9";
-          decryptedDiv.style.background = "#f1f8e9";
+        const decryptedDiv = createPanel(!signed || verificationResult ? "ok" : "warn");
+        if (signed && verificationResult) {
+          appendHeading(decryptedDiv, "PGP Signature Verified");
+          appendField(decryptedDiv, "From:", senderEmail);
+          appendField(decryptedDiv, "Key ID:", signatures[0].keyID.toHex());
+        } else if (signed) {
+          appendHeading(decryptedDiv, "PGP Signature Verification Failed");
+          appendField(decryptedDiv, "From:", senderEmail);
+          if (verificationError) appendField(decryptedDiv, "Error:", verificationError);
         }
-        decryptedDiv.style.padding = "10px";
-        decryptedDiv.style.marginTop = "10px";
-        decryptedDiv.style.whiteSpace = "pre-wrap";
-        if (signatures?.length > 0) {
-          decryptedDiv.innerHTML = `${verifiedInfo}<strong>Decrypted Message:</strong><br>${decrypted}`;
-        } else {
-          decryptedDiv.innerHTML = `<strong>Decrypted Message:</strong><br>${decrypted}`;
-        }
+        appendBody(decryptedDiv, "Decrypted Message:", decrypted);
 
         block.parentElement.appendChild(decryptedDiv);
       } catch (err) {
         block.textContent = "Encrypted PGP message detected. Decryption failed. See details below ↓";
 
-        const failedDiv = document.createElement("div");
-        failedDiv.style.border = "1px solid #ffcdd2";
-        failedDiv.style.background = "#ffebee";
-        failedDiv.style.padding = "10px";
-        failedDiv.style.marginTop = "10px";
-        failedDiv.style.whiteSpace = "pre-wrap";
-        failedDiv.innerHTML = `<strong>PGP Decryption Failed</strong><br><strong>Error:</strong> ${err.message}<br><br><strong>Original Message:</strong><br>${content}`;
+        const failedDiv = createPanel("error");
+        appendHeading(failedDiv, "PGP Decryption Failed");
+        appendField(failedDiv, "Error:", err.message);
+        appendBody(failedDiv, "Original Message:", content);
 
         block.parentElement.appendChild(failedDiv);
 
@@ -317,26 +357,22 @@ async function tryAutoDecryptPGPMessages() {
         const { verified, keyID } = verificationResult.signatures[0];
         await verified;
 
-        const verifiedDiv = document.createElement("div");
-        verifiedDiv.style.border = "1px solid #c8e6c9";
-        verifiedDiv.style.background = "#f1f8e9";
-        verifiedDiv.style.padding = "10px";
-        verifiedDiv.style.marginTop = "10px";
-        verifiedDiv.style.whiteSpace = "pre-wrap";
-        verifiedDiv.innerHTML = `<strong>PGP Signature Verified</strong><br>From: ${senderEmail}<br>Key ID: ${keyID.toHex()}<br><br><strong>Message:</strong><br>${cleartextMessage.getText()}`;
+        const verifiedDiv = createPanel("ok");
+        appendHeading(verifiedDiv, "PGP Signature Verified");
+        appendField(verifiedDiv, "From:", senderEmail);
+        appendField(verifiedDiv, "Key ID:", keyID.toHex());
+        appendBody(verifiedDiv, "Message:", cleartextMessage.getText());
 
         block.textContent = "PGP signed message detected. Verified version below ↓";
         block.parentElement.appendChild(verifiedDiv);
       } catch (err) {
         const cleartextMessage = await openpgp.readCleartextMessage({ cleartextMessage: content });
 
-        const failedDiv = document.createElement("div");
-        failedDiv.style.border = "1px solid #ffcdd2";
-        failedDiv.style.background = "#ffebee";
-        failedDiv.style.padding = "10px";
-        failedDiv.style.marginTop = "10px";
-        failedDiv.style.whiteSpace = "pre-wrap";
-        failedDiv.innerHTML = `<strong>PGP Signature Verification Failed</strong><br>From: ${senderEmail}<br><strong>Error:</strong> ${err.message}<br><br><strong>Original Message:</strong><br>${cleartextMessage.getText()}`;
+        const failedDiv = createPanel("error");
+        appendHeading(failedDiv, "PGP Signature Verification Failed");
+        appendField(failedDiv, "From:", senderEmail);
+        appendField(failedDiv, "Error:", err.message);
+        appendBody(failedDiv, "Original Message:", cleartextMessage.getText());
 
         block.textContent = "PGP signed message detected. Verification failed. See details below ↓";
         block.parentElement.appendChild(failedDiv);

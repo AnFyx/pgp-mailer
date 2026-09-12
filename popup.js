@@ -60,9 +60,23 @@ document.body.addEventListener("click", async (e) => {
   }
 });
 
+// Construit une ligne « clé + bouton de suppression » sans jamais interpréter
+// l'adresse comme du HTML (elle est saisie par l'utilisateur).
+function createKeyRow(email, keyType) {
+  const row = document.createElement("div");
+  row.className = "key-item";
+  row.appendChild(document.createTextNode("\u{1F511} " + email + " "));
+  const remove = document.createElement("button");
+  remove.dataset.id = email;
+  remove.dataset.type = keyType;
+  remove.textContent = "\u274C";
+  row.appendChild(remove);
+  return row;
+}
+
 async function listAndRenderKeys() {
-  privateKeySelector.innerHTML = "";
-  privateKeyList.innerHTML = "Loading...";
+  privateKeySelector.textContent = "";
+  privateKeyList.textContent = "Loading...";
   publicKeyList.textContent = "Loading...";
 
   try {
@@ -79,23 +93,21 @@ async function listAndRenderKeys() {
         privateKeySelector.appendChild(option);
       });
 
-      privateKeyList.innerHTML = privateEmails.map(email =>
-        `&#x1F511; ${email} <button data-id="${email}" data-type="private">&#x274C;</button>`
-      ).join("<br>");
+      privateKeyList.textContent = "";
+      privateEmails.forEach(email => {
+        privateKeyList.appendChild(createKeyRow(email, "private"));
+      });
     } else {
       privateKeyList.textContent = "No private keys stored";
     }
 
-    publicKeyList.innerHTML = "";
+    publicKeyList.textContent = "";
     const publicEmails = Object.keys(publicKeys);
     if (publicEmails.length === 0) {
       publicKeyList.textContent = "No public keys stored";
     } else {
       publicEmails.forEach((email) => {
-        const div = document.createElement("div");
-        div.className = "key-item";
-        div.innerHTML = `&#x1F511; ${email} <button data-id="${email}" data-type="public">&#x274C;</button>`;
-        publicKeyList.appendChild(div);
+        publicKeyList.appendChild(createKeyRow(email, "public"));
       });
     }
   } catch (err) {
