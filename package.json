@@ -1,0 +1,14 @@
+{
+  "name": "pgp-mailer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension to sign, encrypt and decrypt inline PGP messages in Gmail",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1",
+    "vitest": "^5.0.0"
+  }
+}
