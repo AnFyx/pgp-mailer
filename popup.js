@@ -23,6 +23,18 @@ document.getElementById("importKey").addEventListener("click", async () => {
   try {
     if (keyText.includes("PRIVATE")) {
       const privKey = await openpgp.readPrivateKey({ armoredKey: keyText });
+      // Les clés sont conservées telles quelles dans chrome.storage.local, qui
+      // n'est pas chiffré : une clé sans phrase de passe y serait lisible en
+      // clair par tout logiciel ayant accès au profil Chrome. On refuse donc
+      // l'import (échec fermé) plutôt que de stocker une clé nue.
+      if (privKey.isDecrypted()) {
+        alert(
+          "This private key is not protected by a passphrase.\n\n" +
+          "Keys are stored unencrypted by the browser, so only passphrase-protected " +
+          "keys are accepted. Add a passphrase to the key, then import it again."
+        );
+        return;
+      }
       await savePrivateKey(email, keyText);
       await setActivePrivateKey(email);
       alert("Private key saved.");

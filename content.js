@@ -72,32 +72,11 @@ async function getPrivateKeyFromStoreOrPrompt() {
     return privKeys[activeEmail];
   }
 
-  const input = prompt("Paste your PRIVATE key:");
-  if (!input) return null;
-
-  const shouldStore = confirm("Do you want to store this private key for future use?");
-  if (shouldStore) {
-    const email = prompt("Enter your email to associate with this private key:");
-    if (!email) return null;
-    
-    await chrome.runtime.sendMessage({
-      type: "KEY_STORE_ACTION",
-      action: "savePrivateKey",
-      email,
-      armoredKey: input
-    });
-
-    const shouldBeActive = confirm("Set this private key as your active key?");
-    if (shouldBeActive) {
-      await chrome.runtime.sendMessage({
-        type: "KEY_STORE_ACTION",
-        action: "setActivePrivateKey",
-        email
-      });
-    }
-  }
-
-  return input;
+  // Jamais de saisie de clé privée dans la page Gmail : une invite demandant une
+  // clé privée au milieu d'une page web est exactement le geste qu'un hameçonnage
+  // cherche à obtenir. L'import se fait uniquement dans le popup de l'extension.
+  alert("No active private key. Open the PGP Mailer popup to import one.");
+  return null;
 }
 
 async function getRecipientEmailFromDOM() {
@@ -253,12 +232,8 @@ async function tryAutoDecryptPGPMessages() {
     if (content.includes("-----BEGIN PGP MESSAGE-----")) {
       if (block.dataset.decrypted === "true") continue;
       block.dataset.decrypted = "true";
-      let privKeyArmored = await getPrivateKeyFromStoreOrPrompt();
-      if (!privKeyArmored) {
-        privKeyArmored = prompt("PGP message detected. Paste your PRIVATE key to decrypt:");
-        if (!privKeyArmored) continue;
-        await setStorageKey("privateKey", privKeyArmored);
-      }
+      const privKeyArmored = await getPrivateKeyFromStoreOrPrompt();
+      if (!privKeyArmored) continue;
       const passphrase = prompt("Enter passphrase (leave blank if none):") || "";
 
       try {
@@ -381,8 +356,29 @@ async function tryAutoDecryptPGPMessages() {
   }
 }
 
+// Gmail modifie le DOM en continu, et les panneaux ajoutés ici déclenchent à leur
+// tour des mutations : on regroupe les rafales et on évite les exécutions
+// concurrentes de la passe de déchiffrement.
+const OBSERVER_DEBOUNCE_MS = 150;
+let pendingRun = null;
+let running = false;
+
+async function runPasses() {
+  if (running) return;
+  running = true;
+  try {
+    insertButtons();
+    await tryAutoDecryptPGPMessages();
+  } catch (err) {
+    console.error("PGP Mailer: pass failed", err);
+  } finally {
+    running = false;
+  }
+}
+
 const observer = new MutationObserver(() => {
-  insertButtons();
-  tryAutoDecryptPGPMessages();
+  clearTimeout(pendingRun);
+  pendingRun = setTimeout(runPasses, OBSERVER_DEBOUNCE_MS);
 });
 observer.observe(document.body, { childList: true, subtree: true });
+runPasses();

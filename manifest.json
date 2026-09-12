@@ -4,8 +4,6 @@
   "version": "1.0",
   "description": "Easily sign and encrypt Gmail messages with inline PGP support.",
   "permissions": [
-    "scripting",
-    "activeTab",
     "storage"
   ],
   "host_permissions": [
